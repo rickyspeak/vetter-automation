@@ -1,2 +1,5 @@
 # vetter-automation
-automation for vetter software using selenium
+Automation for vetter software using selenium.
+
+Uses implemented:
+1. Pull upcoming appointments and add to calendar
