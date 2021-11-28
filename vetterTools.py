@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.chrome.options import Options
 import time
 from datetime import datetime
 import json
@@ -20,7 +21,9 @@ class VetterTools:
             raise RuntimeError('creds not available')
         creds = self.creds
 
-        with webdriver.Chrome() as driver:
+        options = Options()
+        options.headless = True
+        with webdriver.Chrome(options=options) as driver:
             wait = WebDriverWait(driver, 15)
             driver.get("https://www.vettersoftware.com/apps/index.php/october/login")
             name = driver.find_element(By.NAME, 'fm_login_email')
