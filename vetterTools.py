@@ -83,6 +83,7 @@ class VetterTools:
 
                     closeButton = driver.find_element(By.CLASS_NAME, "close")
                     closeButton.click()
+                    time.sleep(1)
                 if i < days:
                     time.sleep(1)
                     nextButton = driver.find_element(By.CLASS_NAME, 'fc-icon-chevron-right')

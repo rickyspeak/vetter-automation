@@ -1,4 +1,4 @@
-from icalendartools import IcalendarTools
+from googleCalTools import GoogleCalTools
 from vetterTools import VetterTools
 
 
@@ -7,7 +7,7 @@ def main():
     vetter.getCreds()
     appointments = vetter.getAppointments(3)
 
-    ical = IcalendarTools()
+    ical = GoogleCalTools()
     ical.getCreds()
     ical.postAppointments(appointments)
 

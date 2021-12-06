@@ -1,5 +1,5 @@
 import datetime
-import json
+import zoneinfo
 import os.path
 import urllib.parse
 
@@ -9,10 +9,12 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
 # If modifying these scopes, delete the file token.json.
+LOCAL_TZ_STRING = 'America/Los_Angeles'
+LOCAL_TZ = zoneinfo.ZoneInfo(LOCAL_TZ_STRING)
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 BASE_ADDRESS = 'https://www.google.com/maps/dir/?api=1'
 
-class IcalendarTools:
+class GoogleCalTools:
     def __init__(self):
         self.creds = None
 
@@ -26,10 +28,14 @@ class IcalendarTools:
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
+                try:
+                    creds.refresh(Request())
+                except:
+                    creds # do nothing
+
+            if not creds or not creds.valid:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
+                    'secrets/credentials.json', SCOPES)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
             with open('secrets/token.json', 'w') as token:
@@ -41,18 +47,20 @@ class IcalendarTools:
         service = build('calendar', 'v3', credentials=creds)
 
         # Call the Calendar API
-        now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
-        later = (datetime.datetime.utcnow() + datetime.timedelta(days=3)).isoformat() + 'Z'
-        print('Getting the upcoming 10 events')
+        today = datetime.datetime.today()
+        todayDt = datetime.datetime(today.year, today.month, today.day, tzinfo=LOCAL_TZ)
+        now = todayDt.isoformat()
+        later = (todayDt + datetime.timedelta(days=3)).isoformat()
+        print('Getting the upcoming events')
         events_result = service.events().list(calendarId='primary', timeMin=now, timeMax=later,
                                               singleEvents=True, orderBy='startTime').execute()
         events = events_result.get('items', [])
 
-        if not events:
-            print('No upcoming events found.')
+        print('Deleting {} events found'.format(len(events)))
         for event in events:
             service.events().delete(calendarId='primary', eventId=event['id']).execute()
 
+        print("Posting {} appointments found".format(len(appointments)))
         for appointment in appointments:
             if 'patient' not in appointment:
                 appointment['patient'] = 'unknown'
@@ -72,11 +80,12 @@ class IcalendarTools:
                                'notes: ' + appointment['notes'] + '\n',
                 'start': {
                     'dateTime': appointment['start'],
-                    'timeZone': 'America/Los_Angeles',
+                    'timeZone': LOCAL_TZ_STRING,
                 },
                 'end': {
                     'dateTime': appointment['end'],
-                    'timeZone': 'America/Los_Angeles',
+                    'timeZone': LOCAL_TZ_STRING,
                 },
             }
             service.events().insert(calendarId='primary', body=event).execute()
+            print("Created event for {} at {}".format(appointment['client'], appointment['start']))
