@@ -37,23 +37,27 @@ class VetterTools:
             appointments = []
 
             for i in range(days):
+                date = None
                 try:
+                    print("loading page")
+                    wait.until(lambda d: driver.find_element(By.CSS_SELECTOR, '.d-sm-inline span'))
+                    date_header = driver.find_element(By.CSS_SELECTOR, '.d-sm-inline span')
+                    date = date_header.text
+                    print("{} found".format(date))
                     wait.until(lambda d: d.find_elements(By.CLASS_NAME, 'fc-time-grid-event'))
                     time.sleep(1)
                 except TimeoutException:
                     print("time out waiting for page to load, continuing")
 
-                dateHeader = driver.find_element(By.CSS_SELECTOR, '.d-sm-inline span')
-                date = dateHeader.text
-
                 events = driver.find_elements(By.CLASS_NAME, 'fc-time-grid-event')
+                print("{} events found".format(len(events)))
 
                 for event in events:
                     event.click()
                     wait.until(lambda d: d.find_element(By.ID, 'previewModal___BV_modal_title_'))
                     time.sleep(1)
-                    appointmentTime = driver.find_element(By.ID, 'previewModal___BV_modal_title_').text
-                    (start, end) = appointmentTime.split(' - ')
+                    appointment_time = driver.find_element(By.ID, 'previewModal___BV_modal_title_').text
+                    (start, end) = appointment_time.split(' - ')
                     startDt = datetime.strptime(date + ' ' + start, '%A, %B %d, %Y %I:%M %p')
                     endDt = datetime.strptime(date + ' ' + end, '%A, %B %d, %Y %I:%M %p')
 
@@ -79,15 +83,17 @@ class VetterTools:
                         elif label == 'Notes:':
                             appointment['notes'] = row.find_element(By.TAG_NAME, 'div').text
 
+                    if appointment['address'] == None or len(appointment['address']) < 10:
+                        print('Address missing for {} at {}'.format(appointment['client'], appointment['start']))
                     appointments.append(appointment)
 
-                    closeButton = driver.find_element(By.CLASS_NAME, "close")
-                    closeButton.click()
+                    close_button = driver.find_element(By.CLASS_NAME, "close")
+                    close_button.click()
                     time.sleep(1)
                 if i < days:
                     time.sleep(1)
-                    nextButton = driver.find_element(By.CLASS_NAME, 'fc-icon-chevron-right')
-                    nextButton.click()
+                    next_button = driver.find_element(By.CLASS_NAME, 'fc-icon-chevron-right')
+                    next_button.click()
 
         return appointments
 
