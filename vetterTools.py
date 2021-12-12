@@ -84,7 +84,7 @@ class VetterTools:
                             appointment['notes'] = row.find_element(By.TAG_NAME, 'div').text
 
                     if appointment['address'] == None or len(appointment['address']) < 10:
-                        print('Address missing for {} at {}'.format(appointment['client'], appointment['start']))
+                        appointment['client'] = "MISSING ADDRESS: " + appointment['client']
                     appointments.append(appointment)
 
                     close_button = driver.find_element(By.CLASS_NAME, "close")
