@@ -22,7 +22,7 @@ class VetterTools:
         creds = self.creds
 
         options = Options()
-        options.headless = True
+        options.headless = False
         with webdriver.Chrome(options=options) as driver:
             wait = WebDriverWait(driver, 15)
             driver.get("https://www.vettersoftware.com/apps/index.php/october/login")
@@ -53,8 +53,12 @@ class VetterTools:
                 print("{} events found".format(len(events)))
 
                 for event in events:
-                    event.click()
-                    wait.until(lambda d: d.find_element(By.ID, 'previewModal___BV_modal_title_'))
+                    event.find_element(By.CLASS_NAME, 'famfamfam-silk').click()
+                    try:
+                        wait.until(lambda d: d.find_element(By.ID, 'previewModal___BV_modal_title_'))
+                    except:
+                        print("failed to open event")
+                        continue
                     time.sleep(1)
                     appointment_time = driver.find_element(By.ID, 'previewModal___BV_modal_title_').text
                     (start, end) = appointment_time.split(' - ')
