@@ -1,30 +1,39 @@
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+import zoneinfo
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.options import Options
 import time
-from datetime import datetime
+import requests
+from datetime import datetime, timedelta
 import json
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
+LOCAL_TZ_STRING = 'America/Los_Angeles'
+LOCAL_TZ = zoneinfo.ZoneInfo(LOCAL_TZ_STRING)
+UTC_TZ_STRING = 'UTC'
+UTC_TZ = zoneinfo.ZoneInfo(UTC_TZ_STRING)
+TOKEN_FILE = 'secrets/vetter-token'
 
 class VetterTools:
     def __init__(self):
         self.creds = None
+        self.token = None
 
     def getCreds(self):
         with open('secrets/vetter_creds.json') as fp:
             self.creds = json.load(fp)
 
-    def getAppointments(self, days):
+    def getToken(self):
         if self.creds is None:
             raise RuntimeError('creds not available')
         creds = self.creds
 
         options = Options()
-        options.headless = False
-        with webdriver.Chrome(options=options) as driver:
-            wait = WebDriverWait(driver, 15)
+        options.headless = True
+        capabilities = DesiredCapabilities.CHROME
+        capabilities["goog:loggingPrefs"] = {"performance": "ALL"}
+
+        with webdriver.Chrome(options=options, desired_capabilities=capabilities) as driver:
             driver.get("https://www.vettersoftware.com/apps/index.php/october/login")
             name = driver.find_element(By.NAME, 'fm_login_email')
             password = driver.find_element(By.NAME, 'fm_login_password')
@@ -34,70 +43,72 @@ class VetterTools:
 
             login = driver.find_element(By.ID, 'btn-login')
             login.click()
-            appointments = []
 
-            for i in range(days):
-                date = None
-                try:
-                    print("loading page")
-                    wait.until(lambda d: driver.find_element(By.CSS_SELECTOR, '.d-sm-inline span'))
-                    date_header = driver.find_element(By.CSS_SELECTOR, '.d-sm-inline span')
-                    date = date_header.text
-                    print("{} found".format(date))
-                    wait.until(lambda d: d.find_elements(By.CLASS_NAME, 'fc-time-grid-event'))
-                    time.sleep(1)
-                except TimeoutException:
-                    print("time out waiting for page to load, continuing")
+            time.sleep(5)
+            logs = driver.get_log("performance")
 
-                events = driver.find_elements(By.CLASS_NAME, 'fc-time-grid-event')
-                print("{} events found".format(len(events)))
+            for log in logs:
+                network_log = json.loads(log["message"])["message"]
+                if "Network.request" in network_log["method"] and 'headers' in network_log['params'] \
+                        and 'vetter-token' in network_log['params']['headers']:
+                    self.token = network_log['params']['headers']['vetter-token']
+                    self.writeToken(self.token)
+                    return
 
-                for event in events:
-                    event.find_element(By.CLASS_NAME, 'famfamfam-silk').click()
-                    try:
-                        wait.until(lambda d: d.find_element(By.ID, 'previewModal___BV_modal_title_'))
-                    except:
-                        print("failed to open event")
-                        continue
-                    time.sleep(1)
-                    appointment_time = driver.find_element(By.ID, 'previewModal___BV_modal_title_').text
-                    (start, end) = appointment_time.split(' - ')
-                    startDt = datetime.strptime(date + ' ' + start, '%A, %B %d, %Y %I:%M %p')
-                    endDt = datetime.strptime(date + ' ' + end, '%A, %B %d, %Y %I:%M %p')
+    def readToken(self):
+        try:
+            with open(TOKEN_FILE, 'r') as fp:
+                self.token = fp.readline()
+        except:
+            print("no token file found")
 
-                    appointment = {
-                        'start': startDt.isoformat(),
-                        'end': endDt.isoformat()
-                    }
+    def writeToken(self, token):
+        with open(TOKEN_FILE, 'w') as fp:
+            fp.write(token)
 
-                    dataRows = driver.find_element(By.CLASS_NAME, 'modal-body').find_elements(By.CLASS_NAME, 'row')
-                    for row in dataRows:
-                        label = row.find_element(By.TAG_NAME, 'label').text
-                        if label == 'Address:':
-                            aHref = row.find_element(By.TAG_NAME, 'a')
-                            appointment['address'] = aHref.text
-                        elif label == 'Client:':
-                            appointment['client'] = row.find_element(By.TAG_NAME, 'a').text
-                        elif label == 'Patient:':
-                            appointment['patient'] = row.find_element(By.TAG_NAME, 'a').text
-                        elif label == 'Type:':
-                            appointment['type'] = row.find_element(By.TAG_NAME, 'div').text
-                        elif label == 'Complaint:':
-                            appointment['complaint'] = row.find_element(By.TAG_NAME, 'div').text
-                        elif label == 'Notes:':
-                            appointment['notes'] = row.find_element(By.TAG_NAME, 'div').text
+    def setToken(self, token):
+        self.token = token
 
-                    if appointment['address'] == None or len(appointment['address']) < 10:
-                        appointment['client'] = "MISSING ADDRESS: " + appointment['client']
-                    appointments.append(appointment)
+    def validateToken(self):
+        headers = {
+            'vetter-token': self.token
+        }
+        r = requests.get('https://www.vettersoftware.com/barramundi/actor/staff', headers=headers)
+        return r.status_code == 200
 
-                    close_button = driver.find_element(By.CLASS_NAME, "close")
-                    close_button.click()
-                    time.sleep(1)
-                if i < days:
-                    time.sleep(1)
-                    next_button = driver.find_element(By.CLASS_NAME, 'fc-icon-chevron-right')
-                    next_button.click()
+    def getAppointments(self, days):
+        if self.token is None:
+            raise RuntimeError('token not available')
 
+        appointments = list()
+
+        today = datetime.today()
+        todayDt = datetime(today.year, today.month, today.day, tzinfo=UTC_TZ)
+        start = todayDt.isoformat().replace('+00:00', '.000Z')
+        end = (todayDt + timedelta(days=3)).isoformat().replace('+00:00', '.000Z')
+
+        params = {
+            'start': start,
+            'end': end,
+        }
+        headers = {
+            'vetter-token': self.token
+        }
+        response = requests.get('https://www.vettersoftware.com/barramundi/schedule/appointment',
+                     params=params, headers=headers)
+        events = json.loads(response.content)['response']['resources']
+        for event in events:
+            r = requests.get('https://www.vettersoftware.com/barramundi/schedule/appointment/' + event['id'],
+                                    headers=headers)
+            appointment = json.loads(r.content)['response']['resources']
+            appointments.append({
+                'start': appointment['start'],
+                'end': appointment['end'],
+                'address': appointment['appointment_location']['address_label'],
+                'client': appointment['client']['firstname'] + ' ' + appointment['client']['lastname'],
+                'patient': appointment['patient']['name'],
+                'complaint': appointment['reason'],
+                'notes': appointment['note'],
+            })
         return appointments
 

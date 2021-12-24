@@ -62,20 +62,21 @@ class GoogleCalTools:
 
         print("Posting {} appointments found".format(len(appointments)))
         for appointment in appointments:
+            missing_address = "MISSING ADDRESS: "
             if 'patient' not in appointment:
                 appointment['patient'] = 'unknown'
-            if 'address' in appointment:
+            if 'address' in appointment and len(appointment['address']) > 10:
                 appointment['addressLink'] = BASE_ADDRESS + '&destination=' + \
                                              urllib.parse.quote_plus(appointment['address'])
+                missing_address = ''
             else:
                 appointment['addressLink'] = 'None'
 
             event = {
-                'summary': appointment['client'],
+                'summary': missing_address + appointment['client'],
                 'location': appointment['address'],
                 'description': 'addressLink: ' + appointment['addressLink'] + '\n' +
                                'patient: ' + appointment['patient'] + '\n' +
-                               'type: ' + appointment['type'] + '\n' +
                                'complaint: ' + appointment['complaint'] + '\n' +
                                'notes: ' + appointment['notes'] + '\n',
                 'start': {
