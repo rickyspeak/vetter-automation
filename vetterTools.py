@@ -18,6 +18,14 @@ class VetterTools:
     def __init__(self):
         self.creds = None
         self.token = None
+        self.business_id = None
+        self.clientsByPhoneNumber = dict()
+
+    def login(self):
+        self.getCreds()
+        self.readToken()
+        if not self.validateToken():
+            self.getToken()
 
     def getCreds(self):
         with open('secrets/vetter_creds.json') as fp:
@@ -52,19 +60,23 @@ class VetterTools:
                 if "Network.request" in network_log["method"] and 'headers' in network_log['params'] \
                         and 'vetter-token' in network_log['params']['headers']:
                     self.token = network_log['params']['headers']['vetter-token']
-                    self.writeToken(self.token)
+                    for cookie in network_log['params']['associatedCookies']:
+                        if cookie['cookie']['name'] == 'active_business_id':
+                            self.business_id = cookie['cookie']['value']
+                    self.writeToken(self.token, self.business_id)
                     return
 
     def readToken(self):
         try:
             with open(TOKEN_FILE, 'r') as fp:
-                self.token = fp.readline()
+                self.token = fp.readline().replace('\n', '')
+                self.business_id = fp.readline()
         except:
             print("no token file found")
 
-    def writeToken(self, token):
+    def writeToken(self, token, id):
         with open(TOKEN_FILE, 'w') as fp:
-            fp.write(token)
+            fp.write(token + '\n' + id)
 
     def setToken(self, token):
         self.token = token
@@ -85,7 +97,7 @@ class VetterTools:
         today = datetime.today()
         todayDt = datetime(today.year, today.month, today.day, tzinfo=UTC_TZ)
         start = todayDt.isoformat().replace('+00:00', '.000Z')
-        end = (todayDt + timedelta(days=3)).isoformat().replace('+00:00', '.000Z')
+        end = (todayDt + timedelta(days=days)).isoformat().replace('+00:00', '.000Z')
 
         params = {
             'start': start,
@@ -111,4 +123,91 @@ class VetterTools:
                 'notes': appointment['note'],
             })
         return appointments
+
+    def loadClients(self):
+        headers = {
+            'vetter-token': self.token
+        }
+        params = {
+            'perPage': 200,
+            'page': 1
+        }
+        body = {
+            'meta': {
+                'nextPageUrl': 'https://www.vettersoftware.com/barramundi/actor/client?page1'
+            }
+        }
+        while body['meta']['nextPageUrl']:
+            response = requests.get('https://www.vettersoftware.com/barramundi/actor/client',
+                                    params=params, headers=headers)
+            if response.status_code != 200:
+                print('failed to get client list')
+                raise RuntimeError('failed to get client list')
+
+            params['page'] += 1
+            body = json.loads(response.content)['response']
+            for client in body['resource']['data']:
+                phone_numbers = self.getClientNumbers(client)
+                for phone_number in phone_numbers:
+                    self.clientsByPhoneNumber[phone_number] = client
+
+    def getClientNumbers(self, client):
+        phone_numbers = list()
+        if client['home'] is not None and client['home'] != '':
+            phone_numbers.append(self.normalizeNumber(client['home_country_code'], client['home']))
+        if client['mobile'] is not None and client['mobile'] != '':
+            phone_numbers.append(self.normalizeNumber(client['mobile_country_code'], client['mobile']))
+        if client['work'] is not None and client['work'] != '':
+            phone_numbers.append(self.normalizeNumber(client['work_country_code'], client['work']))
+        return phone_numbers
+
+    def normalizeNumber(self, country_code, number):
+        country_code = str(country_code)
+        number = number.replace('-', '').replace('(', '').replace(')', '').replace(' ', '').replace('.', '')
+        if number[0] == '1':
+            number = number[1:]
+        return country_code + number
+
+    def postConversations(self, conversations, line2):
+        headers = {
+            'vetter-token': self.token
+        }
+        for phone_number in conversations:
+            if phone_number not in self.clientsByPhoneNumber:
+                continue
+            client = self.clientsByPhoneNumber[phone_number]
+            client_name = client['firstname'] + ' ' + client['lastname']
+            dates = list(conversations[phone_number].items())
+            dates.sort()
+            for date, text_chain in dates:
+                text_chain.sort()
+                content = ""
+                last_sender = None
+                for text in text_chain:
+                    if last_sender != text[2]:
+                        if last_sender is not None:
+                            content += '\n'
+                        last_sender = text[2]
+                        content += '---'
+                        if last_sender == phone_number:
+                            content += client_name
+                        else:
+                            content += last_sender
+                        content += '---' + str(text[1]) + '\n'
+                    content += text[4] + '\n'
+
+                body = {
+                    'business_id': self.business_id,
+                    'client_id': client['id'],
+                    'content': content,
+                    'date': text_chain[0][1].isoformat(),
+                    'patient_id': "",
+                    'type': 6
+                }
+                r = requests.post('https://www.vettersoftware.com/barramundi/communication', data=body, headers=headers)
+                if r.status_code != 200:
+                    raise RuntimeError('failed to post conversation, quitting')
+                print("Created text communication for {} on {}".format(client_name, str(date)))
+                line2.commitCommunication(phone_number, text_chain[-1][0])
+
 
