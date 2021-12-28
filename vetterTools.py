@@ -113,6 +113,9 @@ class VetterTools:
             r = requests.get('https://www.vettersoftware.com/barramundi/schedule/appointment/' + event['id'],
                                     headers=headers)
             appointment = json.loads(r.content)['response']['resources']
+            # fill some defaults
+            if 'patient' not in appointment or appointment['patient'] is None:
+                appointment['patient'] = {'name': 'unknown'}
             appointments.append({
                 'start': appointment['start'],
                 'end': appointment['end'],
