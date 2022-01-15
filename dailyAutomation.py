@@ -6,9 +6,9 @@ def main():
     vetter.login()
     appointments = vetter.getAppointments(3)
 
-    ical = GoogleCalTools()
-    ical.getCreds()
-    ical.postAppointments(appointments)
+    googleCal = GoogleCalTools()
+    googleCal.getCreds()
+    googleCal.postAppointments(appointments)
 
 
 if __name__ == '__main__':

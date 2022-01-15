@@ -18,6 +18,14 @@ class GoogleCalTools:
     def __init__(self):
         self.creds = None
 
+    def refreshCreds(self):
+        flow = InstalledAppFlow.from_client_secrets_file(
+            'secrets/credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('secrets/token.json', 'w') as token:
+            token.write(creds.to_json())
+
     def getCreds(self):
         creds = self.creds
         # The file token.json stores the user's access and refresh tokens, and is
