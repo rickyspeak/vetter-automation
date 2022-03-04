@@ -116,6 +116,8 @@ class VetterTools:
             # fill some defaults
             if 'patient' not in appointment or appointment['patient'] is None:
                 appointment['patient'] = {'name': 'unknown'}
+            if 'appointment_location' not in appointment or appointment['appointment_location'] is None:
+                continue
             appointments.append({
                 'start': appointment['start'],
                 'end': appointment['end'],
